@@ -62,3 +62,10 @@
 -   skadalloc (not public)
 -   https://github.com/rustwasm/wee_alloc
 -   https://github.com/jemalloc/jemalloc
+
+## Editor support
+
+### References
+
+-   https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide
+-   https://macromates.com/manual/en/language_grammars
