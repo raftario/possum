@@ -37,11 +37,13 @@
 -   Compilers: Principles, Techniques, and Tools, 2nd edition (ISBN-13: 9780321486813)
 -   Types and Programming Languages Hardcover (ISBN-13: 9780262162098)
 -   https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/index.html
+-   https://gitlab.inria.fr/fpottier/mpri-2.4-public/-/tree/master
 
 ### Libraries
 
 -   https://github.com/maciejhirsz/logos (Lexer)
 -   https://github.com/pepyakin/binaryen-rs (IR)
+-   https://github.com/brendanzab/codespan (Errors)
 
 ### Code
 
