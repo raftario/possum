@@ -59,8 +59,13 @@
 
 ### Code
 
--   skadalloc (not public)
+-   https://github.com/ezrosent/allocators-rs
 -   https://github.com/rustwasm/wee_alloc
+-   skadalloc (not public)
+-   https://github.com/CCareaga/heap_allocator
+-   https://github.com/bbu/userland-slab-allocator
+-   https://github.com/phil-opp/linked-list-allocator
+-   https://github.com/rust-embedded/alloc-cortex-m
 -   https://github.com/jemalloc/jemalloc
 
 ## Editor support
