@@ -80,8 +80,6 @@ pub enum Token<'a> {
     Path,
     #[token("..")]
     Range,
-    #[token("=>")]
-    Arrow,
 
     #[token("==")]
     Equal,
@@ -106,8 +104,6 @@ pub enum Token<'a> {
     Fn,
     #[token("struct")]
     Struct,
-    #[token("match")]
-    Match,
     #[token("if")]
     If,
     #[token("else")]
@@ -124,6 +120,8 @@ pub enum Token<'a> {
     Import,
     #[token("export")]
     Export,
+    #[token("use")]
+    Use,
     #[token("type")]
     Type,
     #[token("constraint")]
@@ -137,7 +135,7 @@ pub enum Token<'a> {
     Continue,
 
     #[regex(r"([0-9]+|0x[A-Fa-f0-9]+|0o[0-7]+|0b[01]+)", |lex| parse_integer(lex.slice()))]
-    IntegerLiteral(i64),
+    IntegerLiteral(u64),
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
     FloatLiteral(f64),
     #[regex(r"true|false", |lex| parse_bool(lex.slice()))]
@@ -165,13 +163,13 @@ pub fn lexer(source: &str) -> Lexer<Token> {
 
 /// Parses an integer literal to an actual integer
 /// Works for decimal, hexadecimal, octal and binary representations
-pub fn parse_integer(slice: &str) -> Option<i64> {
+pub fn parse_integer(slice: &str) -> Option<u64> {
     let bytes = slice.as_bytes();
     match (slice.len() >= 2, bytes[0]) {
         (true, b'0') => match bytes[1] {
-            b'x' => i64::from_str_radix(&slice[2..], 16).ok(),
-            b'o' => i64::from_str_radix(&slice[2..], 8).ok(),
-            b'b' => i64::from_str_radix(&slice[2..], 2).ok(),
+            b'x' => u64::from_str_radix(&slice[2..], 16).ok(),
+            b'o' => u64::from_str_radix(&slice[2..], 8).ok(),
+            b'b' => u64::from_str_radix(&slice[2..], 2).ok(),
             _ => slice.parse().ok(),
         },
         _ => slice.parse().ok(),
