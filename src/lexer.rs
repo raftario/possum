@@ -1,5 +1,6 @@
 use logos::Logos;
 
+/// Represents the possible source tokens
 #[derive(Debug, Clone, PartialEq, Logos)]
 pub enum Token<'a> {
     #[regex(r"[ \n\t\r]+", logos::skip)]
@@ -42,7 +43,7 @@ pub enum Token<'a> {
     #[token(r"_")]
     Underscore,
     #[token(r"=")]
-    Equal,
+    Assign,
     #[token(r"!")]
     Bang,
     #[token(r"~")]
@@ -79,7 +80,7 @@ pub enum Token<'a> {
     Range,
 
     #[token(r"==")]
-    EqualEqual,
+    Equal,
     #[token(r"!=")]
     NotEqual,
     #[token(r">=")]
@@ -95,6 +96,8 @@ pub enum Token<'a> {
     Let,
     #[token(r"const")]
     Const,
+    #[token(r"global")]
+    Global,
     #[token(r"fn")]
     Fn,
     #[token(r"struct")]
@@ -116,18 +119,27 @@ pub enum Token<'a> {
     #[token(r"export")]
     Export,
 
+    #[token(r"return")]
+    Return,
+    #[token(r"break")]
+    Break,
+    #[token(r"continue")]
+    Continue,
+
     #[regex(r"([0-9]+|0x[A-Fa-f0-9]+|0o[0-7]+|0b[01]+)", |lex| parse_integer(lex.slice()))]
     IntegerLiteral(i64),
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
     FloatLiteral(f64),
-    #[token("true")]
-    TrueLiteral,
-    #[token("false")]
-    FalseLiteral,
-    #[regex(r#""(\\"\\'|\\\\|\\n|\\t|\\r|\\0|[^"\\])*""#, |lex| parse_str(lex.slice()))]
+    #[regex("true|false", |lex| parse_bool(lex.slice()))]
+    BoolLiteral(bool),
+    #[regex(r#""(\\"|[^"])*""#, |lex| parse_str(lex.slice()))]
     StringLiteral(String),
-    #[regex(r#"'(\\"\\'|\\\\|\\n|\\t|\\r|\\0|[^'\\])'"#, |lex| parse_char(lex.slice()))]
+    #[regex(r#"'(\\'|\\?[^']|)'"#, |lex| parse_char(lex.slice()))]
     CharLiteral(char),
+    #[regex(r#"b"(\\"|[\x00-\x21\x23-\x7F])*""#, |lex| parse_byte_str(lex.slice()))]
+    ByteStringLiteral(Vec<u8>),
+    #[regex(r#"b'(\\'|\\?[\x00-\x26\x28-\x7F]|)'"#, |lex| parse_byte(lex.slice()))]
+    ByteLiteral(u8),
 
     #[regex(r"//.*[\n\r]")]
     Comment,
@@ -136,7 +148,7 @@ pub enum Token<'a> {
     Identifier(&'a str),
 }
 
-/// Parses the string representation of an integer to an actual integer
+/// Parses an integer literal to an actual integer
 /// Works for decimal, hexadecimal, octal and binary representations
 pub fn parse_integer(slice: &str) -> Option<i64> {
     let bytes = slice.as_bytes();
@@ -151,9 +163,16 @@ pub fn parse_integer(slice: &str) -> Option<i64> {
     }
 }
 
-// TODO: Unicode escape support
+/// Parses a boolean literal to an actual boolean
+pub fn parse_bool(slice: &str) -> Option<bool> {
+    match slice {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
 
-/// Parses a source string to an actual string
+/// Parses a string literal to an actual string
 pub fn parse_str(slice: &str) -> Option<String> {
     // Ignore quotes
     let slice = &slice[1..(slice.len() - 1)];
@@ -163,7 +182,7 @@ pub fn parse_str(slice: &str) -> Option<String> {
 
     while let Some(c) = chars.next() {
         res.push(match c {
-            '\\' => unescape(chars.next()?)?,
+            '\\' => unescape(chars.next()?)?.into(),
             _ => c,
         });
     }
@@ -171,31 +190,63 @@ pub fn parse_str(slice: &str) -> Option<String> {
     Some(res)
 }
 
-/// Parses a source char to an actual char
+/// Parses a char literal to an actual char
 pub fn parse_char(slice: &str) -> Option<char> {
     // Ignore quotes
     let slice = &slice[1..(slice.len() - 1)];
 
     let mut chars = slice.chars();
     match chars.next() {
-        Some('\\') => unescape(chars.next()?),
+        Some('\\') => unescape(chars.next()?).map(Into::into),
         Some(c) => Some(c),
         None => None,
     }
 }
 
+/// Parses a byte string literal to an actual byte string
+pub fn parse_byte_str(slice: &str) -> Option<Vec<u8>> {
+    // Ignore quotes and prefix
+    let slice = slice[2..(slice.len() - 1)].as_bytes();
+
+    let mut res = Vec::with_capacity(slice.len());
+    let mut bytes = slice.iter();
+
+    while let Some(b) = bytes.next() {
+        res.push(match b {
+            b'\\' => unescape((*bytes.next()?).into())?,
+            _ => *b,
+        });
+    }
+
+    Some(res)
+}
+
+/// Parses a byte literal to an actual byte
+pub fn parse_byte(slice: &str) -> Option<u8> {
+    // Ignore quotes and prefix
+    let slice = slice[2..(slice.len() - 1)].as_bytes();
+
+    let mut bytes = slice.iter();
+    match bytes.next() {
+        Some(b'\\') => unescape((*bytes.next()?).into()),
+        Some(b) => Some(*b),
+        None => None,
+    }
+}
+
+// TODO: ASCII & Unicode escape support
 /// Converts an escape code to the character it represents
-pub fn unescape(c: char) -> Option<char> {
+pub fn unescape(c: char) -> Option<u8> {
     match c {
-        '"' => Some('"'),
-        '\'' => Some('\''),
-        '\\' => Some('\\'),
+        '"' => Some(b'"'),
+        '\'' => Some(b'\''),
+        '\\' => Some(b'\\'),
 
-        'n' => Some('\n'),
-        't' => Some('\t'),
-        'r' => Some('\r'),
+        'n' => Some(b'\n'),
+        't' => Some(b'\t'),
+        'r' => Some(b'\r'),
 
-        '0' => Some('\0'),
+        '0' => Some(b'\0'),
 
         _ => None,
     }
