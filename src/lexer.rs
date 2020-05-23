@@ -1,4 +1,4 @@
-use logos::Logos;
+use logos::{Lexer, Logos};
 
 /// Represents the possible source tokens
 #[derive(Debug, Clone, PartialEq, Logos)]
@@ -156,6 +156,11 @@ pub enum Token<'a> {
 
     #[regex(r"_*[A-Za-z][A-Za-z0-9_]*", |lex| lex.slice())]
     Identifier(&'a str),
+}
+
+/// Parses the provided source code into an iterator of tokens
+pub fn lexer(source: &str) -> Lexer<Token> {
+    Token::lexer(source)
 }
 
 /// Parses an integer literal to an actual integer
