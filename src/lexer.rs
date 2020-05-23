@@ -78,6 +78,8 @@ pub enum Token<'a> {
     Path,
     #[token("..")]
     Range,
+    #[token("=>")]
+    Arrow,
 
     #[token("==")]
     Equal,
@@ -102,6 +104,8 @@ pub enum Token<'a> {
     Fn,
     #[token("struct")]
     Struct,
+    #[token("match")]
+    Match,
     #[token("if")]
     If,
     #[token("else")]
