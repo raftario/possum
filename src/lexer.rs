@@ -1,8 +1,8 @@
 use logos::Logos;
 
-#[derive(Debug, Copy, Clone, PartialEq, Logos)]
+#[derive(Debug, Clone, PartialEq, Logos)]
 pub enum Token<'a> {
-    #[regex(r"[ \t\n\r]+", logos::skip)]
+    #[regex(r"[ \n\t\r]+", logos::skip)]
     #[error]
     Error,
 
@@ -116,8 +116,8 @@ pub enum Token<'a> {
     #[token(r"export")]
     Export,
 
-    #[regex(r#""(\\"|[^"])*""#, |lex| &lex.slice()[1..(lex.slice().len() - 1)])]
-    StringLiteral(&'a str),
+    #[regex(r#""((\\"|\\\\|\\n|\\t|\\r|\\0)|[^"\\])*""#, |lex| parse_str(lex.slice()))]
+    StringLiteral(String),
     #[regex(r"([0-9]+|0x[A-Fa-f0-9]+|0o[0-7]+|0b[01]+)", |lex| parse_integer(lex.slice()))]
     IntegerLiteral(i64),
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
@@ -134,7 +134,9 @@ pub enum Token<'a> {
     Identifier(&'a str),
 }
 
-fn parse_integer(slice: &str) -> Option<i64> {
+/// Parses the string representation of an integer to an actual integer
+/// Works for decimal, hexadecimal, octal and binary representations
+pub fn parse_integer(slice: &str) -> Option<i64> {
     let bytes = slice.as_bytes();
     match (slice.len() >= 2, bytes[0]) {
         (true, b'0') => match bytes[1] {
@@ -145,4 +147,31 @@ fn parse_integer(slice: &str) -> Option<i64> {
         },
         _ => slice.parse().ok(),
     }
+}
+
+pub fn parse_str(slice: &str) -> Option<String> {
+    let slice = &slice[1..(slice.len() - 1)];
+    let mut res = String::with_capacity(slice.len());
+    let mut chars = slice.chars();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('"') => res.push('"'),
+                Some('\\') => res.push('\\'),
+
+                Some('n') => res.push('\n'),
+                Some('t') => res.push('\t'),
+                Some('r') => res.push('\r'),
+
+                Some('0') => res.push('\0'),
+
+                _ => return None,
+            }
+        } else {
+            res.push(c)
+        }
+    }
+
+    Some(res)
 }
