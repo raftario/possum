@@ -46,6 +46,8 @@ pub enum Token<'a> {
     Assign,
     #[token("!")]
     Bang,
+    #[token("?")]
+    Question,
     #[token("~")]
     Tilde,
     #[token(":")]
