@@ -1,4 +1,5 @@
-use logos::{Lexer, Logos, Span};
+use crate::lexer::Error::InvalidEscape;
+use logos::{Logos, Span};
 use std::num::{ParseFloatError, ParseIntError};
 use thiserror::Error;
 
@@ -15,8 +16,6 @@ pub enum Error {
 
     #[error("invalid escape sequence: {0}")]
     InvalidEscape(String),
-    #[error("invalid byte escape sequence: {0:?}")]
-    InvalidByteEscape(Vec<u8>),
 }
 
 /// Represents the possible source tokens
@@ -173,11 +172,11 @@ pub enum TokenType {
     FalseLiteral,
     #[regex(r#""(\\"|[^"])*""#)]
     StringLiteral,
-    #[regex(r#"'(\\'|\\?[^']|)'"#)]
+    #[regex(r#"'(\\'|\\x[0-7][A-Fa-f0-9]|\\?[^'])'"#)]
     CharLiteral,
     #[regex(r#"b"(\\"|[\x00-\x21\x23-\x7F])*""#)]
     ByteStringLiteral,
-    #[regex(r#"b'(\\'|\\?[\x00-\x26\x28-\x7F])'"#)]
+    #[regex(r#"b'(\\'|\\x[0-7][A-Fa-f0-9]|\\?[\x00-\x26\x28-\x7F])'"#)]
     ByteLiteral,
 
     #[regex(r"//.*[\n\r]")]
@@ -225,7 +224,7 @@ fn filter_underscores(slice: &str) -> String {
     slice.chars().filter(|c| *c != '_').collect()
 }
 
-// TODO: ASCII & Unicode escape support
+// TODO: Unicode escape support
 
 /// Parses a string literal to an actual string
 fn parse_str(slice: &str) -> Result<String, Error> {
@@ -268,7 +267,7 @@ fn parse_byte_str(slice: &str) -> Result<Vec<u8>, Error> {
 
     while let Some(b) = bytes.next() {
         res.push(match b {
-            b'\\' => unescape_byte(&mut bytes)?,
+            b'\\' => unescape(&mut bytes)? as u8,
             _ => b,
         });
     }
@@ -283,15 +282,20 @@ fn parse_byte(slice: &str) -> Result<u8, Error> {
 
     let mut bytes = slice.iter().copied();
     match bytes.next() {
-        Some(b'\\') => unescape_byte(&mut bytes),
+        // The cast is safe since byte literals will not match unicode
+        Some(b'\\') => Ok(unescape(&mut bytes)? as u8),
         Some(b) => Ok(b),
         _ => unreachable!(),
     }
 }
 
 /// Converts an escape code to the character it represents
-fn unescape<C: Iterator<Item = char>>(chars: &mut C) -> Result<char, Error> {
-    match chars.next() {
+fn unescape<Char, Chars>(chars: &mut Chars) -> Result<char, Error>
+where
+    Char: Into<char>,
+    Chars: Iterator<Item = Char>,
+{
+    match chars.next().map(Into::into) {
         Some('"') => Ok('"'),
         Some('\'') => Ok('\''),
         Some('\\') => Ok('\\'),
@@ -302,24 +306,27 @@ fn unescape<C: Iterator<Item = char>>(chars: &mut C) -> Result<char, Error> {
 
         Some('0') => Ok('\0'),
 
-        Some(c) => Err(Error::InvalidEscape(c.to_string())),
-        None => Err(Error::InvalidEscape(String::new())),
+        Some('x') => match chars.next().map(Into::into) {
+            Some(n1) if is_ascii_octdigit(n1) => match chars.next().map(Into::into) {
+                Some(n2) if n2.is_ascii_hexdigit() => {
+                    u8::from_str_radix(&[n1, n2].iter().collect::<String>(), 16)
+                        .map(Into::into)
+                        .map_err(Into::into)
+                }
+
+                Some(n2) => Err(InvalidEscape(['\\', 'x', n1, n2].iter().collect())),
+                None => Err(InvalidEscape(['\\', 'x', n1].iter().collect())),
+            },
+
+            Some(n1) => Err(InvalidEscape(['\\', 'x', n1].iter().collect())),
+            None => Err(InvalidEscape(['\\', 'x'].iter().collect())),
+        },
+
+        Some(c) => Err(Error::InvalidEscape(['\\', c].iter().collect())),
+        None => Err(Error::InvalidEscape(['\\'].iter().collect())),
     }
 }
 
-fn unescape_byte<B: Iterator<Item = u8>>(bytes: &mut B) -> Result<u8, Error> {
-    match bytes.next() {
-        Some(b'"') => Ok(b'"'),
-        Some(b'\'') => Ok(b'\''),
-        Some(b'\\') => Ok(b'\\'),
-
-        Some(b'n') => Ok(b'\n'),
-        Some(b't') => Ok(b'\t'),
-        Some(b'r') => Ok(b'\r'),
-
-        Some(b'0') => Ok(b'\0'),
-
-        Some(u) => Err(Error::InvalidByteEscape(vec![u])),
-        None => Err(Error::InvalidByteEscape(Vec::new())),
-    }
+fn is_ascii_octdigit(c: char) -> bool {
+    c >= '0' && c <= '7'
 }
