@@ -1,5 +1,4 @@
-use logos::Span;
-use possum::lexer::{self, TokenType};
+use possum::lexer;
 use std::{
     env, fs,
     io::{self, BufRead, Write},
@@ -42,16 +41,33 @@ fn run_prompt() {
 fn run(source: &str) {
     let start = Instant::now();
 
-    let tokens: Vec<(TokenType, Span)> = lexer::lexer(source).spanned().collect();
+    let mut tokens = Vec::new();
+    let mut errors = Vec::new();
+    for (result, span) in lexer::lexer(source) {
+        match result {
+            Ok(t) => tokens.push((t, span)),
+            Err(e) => errors.push((e, span)),
+        }
+    }
 
     let elapsed = start.elapsed();
     println!(
-        "Parsed {} tokens in {} us",
+        "Parsed {} tokens in {} us with {} errors",
         tokens.len(),
-        elapsed.as_micros()
+        elapsed.as_micros(),
+        errors.len(),
     );
     println!();
 
+    for (error, span) in errors {
+        println!(
+            "[{}..{}] {:?} - {:?}",
+            span.start,
+            span.end,
+            &source[span.start..span.end],
+            error,
+        );
+    }
     for (token, span) in tokens {
         println!(
             "[{}..{}] {:?} - {:?}",

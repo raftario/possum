@@ -10,3 +10,4 @@ members = ["cli"]
 
 [dependencies]
 logos = "0.11"
+thiserror = "1"

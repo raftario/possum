@@ -1,4 +1,23 @@
-use logos::{Lexer, Logos};
+use logos::{Lexer, Logos, Span};
+use std::num::{ParseFloatError, ParseIntError};
+use thiserror::Error;
+
+/// Represents a lexing error
+#[derive(Debug, Clone, Error)]
+pub enum Error {
+    #[error("invalid token")]
+    InvalidToken,
+
+    #[error("invalid integer: {0}")]
+    InvalidInteger(#[from] ParseIntError),
+    #[error("invalid float: {0}")]
+    InvalidFloat(#[from] ParseFloatError),
+
+    #[error("invalid escape sequence: {0}")]
+    InvalidEscape(String),
+    #[error("invalid byte escape sequence: {0:?}")]
+    InvalidByteEscape(Vec<u8>),
+}
 
 /// Represents the possible source tokens
 #[derive(Debug, Copy, Clone, PartialEq, Logos)]
@@ -169,27 +188,47 @@ pub enum TokenType {
 }
 
 /// Parses the provided source code into an iterator of tokens
-pub fn lexer(source: &str) -> Lexer<TokenType> {
-    TokenType::lexer(source)
+pub fn lexer<'a>(source: &'a str) -> impl Iterator<Item = (Result<TokenType, Error>, Span)> + 'a {
+    TokenType::lexer(source).spanned().map(|(t, s)| {
+        (
+            match t {
+                TokenType::Error => Err(Error::InvalidToken),
+                _ => Ok(t),
+            },
+            s,
+        )
+    })
 }
 
-/// Parses an integer literal to an actual integer
-/// Works for decimal, hexadecimal, octal and binary representations
-pub fn parse_integer(slice: &str) -> Option<u64> {
-    let bytes = slice.as_bytes();
-    match (slice.len() >= 2, bytes[0]) {
-        (true, b'0') => match bytes[1] {
-            b'x' => u64::from_str_radix(&slice[2..], 16).ok(),
-            b'o' => u64::from_str_radix(&slice[2..], 8).ok(),
-            b'b' => u64::from_str_radix(&slice[2..], 2).ok(),
-            _ => slice.parse().ok(),
-        },
-        _ => slice.parse().ok(),
-    }
+/// Parses a decimal integer literal to an actual integer
+fn parse_int(slice: &str) -> Result<u64, Error> {
+    filter_underscores(slice).parse().map_err(Into::into)
 }
+
+/// Parses an hexadecimal integer literal to an actual integer
+fn parse_hex_int(slice: &str) -> Result<u64, Error> {
+    u64::from_str_radix(&filter_underscores(&slice[2..]), 16).map_err(Into::into)
+}
+
+/// Parses an octal integer literal to an actual integer
+fn parse_oct_int(slice: &str) -> Result<u64, Error> {
+    u64::from_str_radix(&filter_underscores(&slice[2..]), 8).map_err(Into::into)
+}
+
+/// Parses a binary integer literal to an actual integer
+fn parse_bin_int(slice: &str) -> Result<u64, Error> {
+    u64::from_str_radix(&filter_underscores(&slice[2..]), 2).map_err(Into::into)
+}
+
+/// Removes underscores from a slice
+fn filter_underscores(slice: &str) -> String {
+    slice.chars().filter(|c| *c != '_').collect()
+}
+
+// TODO: ASCII & Unicode escape support
 
 /// Parses a string literal to an actual string
-pub fn parse_str(slice: &str) -> Option<String> {
+fn parse_str(slice: &str) -> Result<String, Error> {
     // Ignore quotes
     let slice = &slice[1..(slice.len() - 1)];
 
@@ -198,72 +237,89 @@ pub fn parse_str(slice: &str) -> Option<String> {
 
     while let Some(c) = chars.next() {
         res.push(match c {
-            '\\' => unescape(chars.next()?)?.into(),
+            '\\' => unescape(&mut chars)?,
             _ => c,
         });
     }
 
-    Some(res)
+    Ok(res)
 }
 
 /// Parses a char literal to an actual char
-pub fn parse_char(slice: &str) -> Option<char> {
+fn parse_char(slice: &str) -> Result<char, Error> {
     // Ignore quotes
     let slice = &slice[1..(slice.len() - 1)];
 
     let mut chars = slice.chars();
     match chars.next() {
-        Some('\\') => unescape(chars.next()?).map(Into::into),
-        Some(c) => Some(c),
-        None => None,
+        Some('\\') => unescape(&mut chars),
+        Some(c) => Ok(c),
+        _ => unreachable!(),
     }
 }
 
 /// Parses a byte string literal to an actual byte string
-pub fn parse_byte_str(slice: &str) -> Option<Vec<u8>> {
+fn parse_byte_str(slice: &str) -> Result<Vec<u8>, Error> {
     // Ignore quotes and prefix
     let slice = slice[2..(slice.len() - 1)].as_bytes();
 
     let mut res = Vec::with_capacity(slice.len());
-    let mut bytes = slice.iter();
+    let mut bytes = slice.iter().copied();
 
     while let Some(b) = bytes.next() {
         res.push(match b {
-            b'\\' => unescape((*bytes.next()?).into())?,
-            _ => *b,
+            b'\\' => unescape_byte(&mut bytes)?,
+            _ => b,
         });
     }
 
-    Some(res)
+    Ok(res)
 }
 
 /// Parses a byte literal to an actual byte
-pub fn parse_byte(slice: &str) -> Option<u8> {
+fn parse_byte(slice: &str) -> Result<u8, Error> {
     // Ignore quotes and prefix
     let slice = slice[2..(slice.len() - 1)].as_bytes();
 
-    let mut bytes = slice.iter();
+    let mut bytes = slice.iter().copied();
     match bytes.next() {
-        Some(b'\\') => unescape((*bytes.next()?).into()),
-        Some(b) => Some(*b),
-        None => None,
+        Some(b'\\') => unescape_byte(&mut bytes),
+        Some(b) => Ok(b),
+        _ => unreachable!(),
     }
 }
 
-// TODO: ASCII & Unicode escape support
 /// Converts an escape code to the character it represents
-pub fn unescape(c: char) -> Option<u8> {
-    match c {
-        '"' => Some(b'"'),
-        '\'' => Some(b'\''),
-        '\\' => Some(b'\\'),
+fn unescape<C: Iterator<Item = char>>(chars: &mut C) -> Result<char, Error> {
+    match chars.next() {
+        Some('"') => Ok('"'),
+        Some('\'') => Ok('\''),
+        Some('\\') => Ok('\\'),
 
-        'n' => Some(b'\n'),
-        't' => Some(b'\t'),
-        'r' => Some(b'\r'),
+        Some('n') => Ok('\n'),
+        Some('t') => Ok('\t'),
+        Some('r') => Ok('\r'),
 
-        '0' => Some(b'\0'),
+        Some('0') => Ok('\0'),
 
-        _ => None,
+        Some(c) => Err(Error::InvalidEscape(c.to_string())),
+        None => Err(Error::InvalidEscape(String::new())),
+    }
+}
+
+fn unescape_byte<B: Iterator<Item = u8>>(bytes: &mut B) -> Result<u8, Error> {
+    match bytes.next() {
+        Some(b'"') => Ok(b'"'),
+        Some(b'\'') => Ok(b'\''),
+        Some(b'\\') => Ok(b'\\'),
+
+        Some(b'n') => Ok(b'\n'),
+        Some(b't') => Ok(b'\t'),
+        Some(b'r') => Ok(b'\r'),
+
+        Some(b'0') => Ok(b'\0'),
+
+        Some(u) => Err(Error::InvalidByteEscape(vec![u])),
+        None => Err(Error::InvalidByteEscape(Vec::new())),
     }
 }
