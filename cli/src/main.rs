@@ -1,5 +1,5 @@
 use logos::Span;
-use possum::lexer::{self, Token};
+use possum::lexer::{self, TokenType};
 use std::{
     env, fs,
     io::{self, BufRead, Write},
@@ -42,7 +42,7 @@ fn run_prompt() {
 fn run(source: &str) {
     let start = Instant::now();
 
-    let tokens: Vec<(Token, Span)> = lexer::lexer(source).spanned().collect();
+    let tokens: Vec<(TokenType, Span)> = lexer::lexer(source).spanned().collect();
 
     let elapsed = start.elapsed();
     println!(

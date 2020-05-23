@@ -1,8 +1,8 @@
 use logos::{Lexer, Logos};
 
 /// Represents the possible source tokens
-#[derive(Debug, Clone, PartialEq, Logos)]
-pub enum Token<'a> {
+#[derive(Debug, Copy, Clone, PartialEq, Logos)]
+pub enum TokenType {
     #[regex(r"[ \n\t\r]+", logos::skip)]
     #[error]
     Error,
@@ -59,6 +59,7 @@ pub enum Token<'a> {
     Or,
     #[token("&&")]
     And,
+
     #[token("+=")]
     PlusAssign,
     #[token("-=")]
@@ -85,6 +86,7 @@ pub enum Token<'a> {
     Equal,
     #[token("!=")]
     NotEqual,
+
     #[token(">=")]
     GreaterEqual,
     #[token("<=")]
@@ -126,6 +128,8 @@ pub enum Token<'a> {
     Type,
     #[token("constraint")]
     Constraint,
+    #[token("is")]
+    Is,
 
     #[token("return")]
     Return,
@@ -134,31 +138,39 @@ pub enum Token<'a> {
     #[token("continue")]
     Continue,
 
-    #[regex(r"([0-9]+|0x[A-Fa-f0-9]+|0o[0-7]+|0b[01]+)", |lex| parse_integer(lex.slice()))]
-    IntegerLiteral(u64),
-    #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
-    FloatLiteral(f64),
-    #[regex(r"true|false", |lex| parse_bool(lex.slice()))]
-    BoolLiteral(bool),
-    #[regex(r#""(\\"|[^"])*""#, |lex| parse_str(lex.slice()))]
-    StringLiteral(String),
-    #[regex(r#"'(\\'|\\?[^']|)'"#, |lex| parse_char(lex.slice()))]
-    CharLiteral(char),
-    #[regex(r#"b"(\\"|[\x00-\x21\x23-\x7F])*""#, |lex| parse_byte_str(lex.slice()))]
-    ByteStringLiteral(Vec<u8>),
-    #[regex(r#"b'(\\'|\\?[\x00-\x26\x28-\x7F]|)'"#, |lex| parse_byte(lex.slice()))]
-    ByteLiteral(u8),
+    #[regex(r"[0-9](_?[0-9])*")]
+    IntegerLiteral,
+    #[regex(r"0[Xx][A-Fa-f0-9](_?[A-Fa-f0-9])*")]
+    HexIntegerLiteral,
+    #[regex(r"0[Oo][0-7](_?[0-7])*")]
+    OctIntegerLiteral,
+    #[regex(r"0[Bb][01](_?[01])*")]
+    BinIntegerLiteral,
+    #[regex(r"[0-9](_?[0-9])*\.[0-9](_?[0-9])*")]
+    FloatLiteral,
+    #[token("true")]
+    TrueLiteral,
+    #[token("false")]
+    FalseLiteral,
+    #[regex(r#""(\\"|[^"])*""#)]
+    StringLiteral,
+    #[regex(r#"'(\\'|\\?[^']|)'"#)]
+    CharLiteral,
+    #[regex(r#"b"(\\"|[\x00-\x21\x23-\x7F])*""#)]
+    ByteStringLiteral,
+    #[regex(r#"b'(\\'|\\?[\x00-\x26\x28-\x7F])'"#)]
+    ByteLiteral,
 
     #[regex(r"//.*[\n\r]")]
     Comment,
 
-    #[regex(r"_*[A-Za-z][A-Za-z0-9_]*", |lex| lex.slice())]
-    Identifier(&'a str),
+    #[regex(r"_*[A-Za-z][A-Za-z0-9_]*")]
+    Identifier,
 }
 
 /// Parses the provided source code into an iterator of tokens
-pub fn lexer(source: &str) -> Lexer<Token> {
-    Token::lexer(source)
+pub fn lexer(source: &str) -> Lexer<TokenType> {
+    TokenType::lexer(source)
 }
 
 /// Parses an integer literal to an actual integer
@@ -173,15 +185,6 @@ pub fn parse_integer(slice: &str) -> Option<u64> {
             _ => slice.parse().ok(),
         },
         _ => slice.parse().ok(),
-    }
-}
-
-/// Parses a boolean literal to an actual boolean
-pub fn parse_bool(slice: &str) -> Option<bool> {
-    match slice {
-        "true" => Some(true),
-        "false" => Some(false),
-        _ => None,
     }
 }
 
