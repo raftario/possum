@@ -116,8 +116,6 @@ pub enum Token<'a> {
     #[token(r"export")]
     Export,
 
-    #[regex(r#""((\\"|\\\\|\\n|\\t|\\r|\\0)|[^"\\])*""#, |lex| parse_str(lex.slice()))]
-    StringLiteral(String),
     #[regex(r"([0-9]+|0x[A-Fa-f0-9]+|0o[0-7]+|0b[01]+)", |lex| parse_integer(lex.slice()))]
     IntegerLiteral(i64),
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
@@ -126,6 +124,10 @@ pub enum Token<'a> {
     TrueLiteral,
     #[token("false")]
     FalseLiteral,
+    #[regex(r#""(\\"\\'|\\\\|\\n|\\t|\\r|\\0|[^"\\])*""#, |lex| parse_str(lex.slice()))]
+    StringLiteral(String),
+    #[regex(r#"'(\\"\\'|\\\\|\\n|\\t|\\r|\\0|[^'\\])'"#, |lex| parse_char(lex.slice()))]
+    CharLiteral(char),
 
     #[regex(r"//.*[\n\r]")]
     Comment,
@@ -149,29 +151,52 @@ pub fn parse_integer(slice: &str) -> Option<i64> {
     }
 }
 
+// TODO: Unicode escape support
+
+/// Parses a source string to an actual string
 pub fn parse_str(slice: &str) -> Option<String> {
+    // Ignore quotes
     let slice = &slice[1..(slice.len() - 1)];
+
     let mut res = String::with_capacity(slice.len());
     let mut chars = slice.chars();
 
     while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('"') => res.push('"'),
-                Some('\\') => res.push('\\'),
-
-                Some('n') => res.push('\n'),
-                Some('t') => res.push('\t'),
-                Some('r') => res.push('\r'),
-
-                Some('0') => res.push('\0'),
-
-                _ => return None,
-            }
-        } else {
-            res.push(c)
-        }
+        res.push(match c {
+            '\\' => unescape(chars.next()?)?,
+            _ => c,
+        });
     }
 
     Some(res)
+}
+
+/// Parses a source char to an actual char
+pub fn parse_char(slice: &str) -> Option<char> {
+    // Ignore quotes
+    let slice = &slice[1..(slice.len() - 1)];
+
+    let mut chars = slice.chars();
+    match chars.next() {
+        Some('\\') => unescape(chars.next()?),
+        Some(c) => Some(c),
+        None => None,
+    }
+}
+
+/// Converts an escape code to the character it represents
+pub fn unescape(c: char) -> Option<char> {
+    match c {
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        '\\' => Some('\\'),
+
+        'n' => Some('\n'),
+        't' => Some('\t'),
+        'r' => Some('\r'),
+
+        '0' => Some('\0'),
+
+        _ => None,
+    }
 }
