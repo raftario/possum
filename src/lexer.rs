@@ -7,71 +7,71 @@ pub enum Token<'a> {
     #[error]
     Error,
 
-    #[token(r"(")]
+    #[token("(")]
     LeftParen,
-    #[token(r")")]
+    #[token(")")]
     RightParen,
-    #[token(r"{")]
+    #[token("{")]
     LeftBrace,
-    #[token(r"}")]
+    #[token("}")]
     RightBrace,
-    #[token(r"[")]
+    #[token("[")]
     LeftBracket,
-    #[token(r"]")]
+    #[token("]")]
     RightBracket,
 
-    #[token(r"+")]
+    #[token("+")]
     Plus,
-    #[token(r"-")]
+    #[token("-")]
     Minus,
-    #[token(r"*")]
+    #[token("*")]
     Star,
-    #[token(r"/")]
+    #[token("/")]
     Slash,
-    #[token(r"%")]
+    #[token("%")]
     Modulo,
-    #[token(r"|")]
+    #[token("|")]
     Bar,
-    #[token(r"&")]
+    #[token("&")]
     Ampersand,
-    #[token(r"^")]
+    #[token("^")]
     Hat,
-    #[token(r".")]
+    #[token(".")]
     Dot,
-    #[token(r",")]
+    #[token(",")]
     Comma,
-    #[token(r"_")]
+    #[token("_")]
     Underscore,
-    #[token(r"=")]
+    #[token("=")]
     Assign,
-    #[token(r"!")]
+    #[token("!")]
     Bang,
-    #[token(r"~")]
+    #[token("~")]
     Tilde,
-    #[token(r":")]
+    #[token(":")]
     Colon,
-    #[token(r";")]
+    #[token(";")]
     Semicolon,
 
-    #[token(r"||")]
+    #[token("||")]
     Or,
-    #[token(r"&&")]
+    #[token("&&")]
     And,
-    #[token(r"+=")]
+    #[token("+=")]
     PlusAssign,
-    #[token(r"-=")]
+    #[token("-=")]
     MinusAssign,
-    #[token(r"*=")]
+    #[token("*=")]
     TimesAssign,
-    #[token(r"/=")]
+    #[token("/=")]
     DivAssign,
-    #[token(r"%=")]
+    #[token("%=")]
     ModuloAssign,
-    #[token(r"|=")]
+    #[token("|=")]
     OrAssign,
-    #[token(r"&=")]
+    #[token("&=")]
     AndAssign,
-    #[token(r"^=")]
+    #[token("^=")]
     XorAssign,
 
     #[token("::")]
@@ -79,58 +79,62 @@ pub enum Token<'a> {
     #[token("..")]
     Range,
 
-    #[token(r"==")]
+    #[token("==")]
     Equal,
-    #[token(r"!=")]
+    #[token("!=")]
     NotEqual,
-    #[token(r">=")]
+    #[token(">=")]
     GreaterEqual,
-    #[token(r"<=")]
+    #[token("<=")]
     LessEqual,
-    #[token(r">")]
+    #[token(">")]
     Greater,
-    #[token(r"<")]
+    #[token("<")]
     Less,
 
-    #[token(r"let")]
+    #[token("let")]
     Let,
-    #[token(r"const")]
+    #[token("const")]
     Const,
-    #[token(r"global")]
+    #[token("global")]
     Global,
-    #[token(r"fn")]
+    #[token("fn")]
     Fn,
-    #[token(r"struct")]
+    #[token("struct")]
     Struct,
-    #[token(r"if")]
+    #[token("if")]
     If,
-    #[token(r"else")]
+    #[token("else")]
     Else,
-    #[token(r"loop")]
+    #[token("loop")]
     Loop,
-    #[token(r"for")]
+    #[token("for")]
     For,
     #[token("in")]
     In,
-    #[token(r"mut")]
+    #[token("mut")]
     Mut,
-    #[token(r"import")]
+    #[token("import")]
     Import,
-    #[token(r"export")]
+    #[token("export")]
     Export,
+    #[token("type")]
+    Type,
+    #[token("constraint")]
+    Constraint,
 
-    #[token(r"return")]
+    #[token("return")]
     Return,
-    #[token(r"break")]
+    #[token("break")]
     Break,
-    #[token(r"continue")]
+    #[token("continue")]
     Continue,
 
     #[regex(r"([0-9]+|0x[A-Fa-f0-9]+|0o[0-7]+|0b[01]+)", |lex| parse_integer(lex.slice()))]
     IntegerLiteral(i64),
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
     FloatLiteral(f64),
-    #[regex("true|false", |lex| parse_bool(lex.slice()))]
+    #[regex(r"true|false", |lex| parse_bool(lex.slice()))]
     BoolLiteral(bool),
     #[regex(r#""(\\"|[^"])*""#, |lex| parse_str(lex.slice()))]
     StringLiteral(String),
