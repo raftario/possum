@@ -1,8 +1,8 @@
 use logos::Logos;
 
 #[derive(Debug, Copy, Clone, PartialEq, Logos)]
-enum Token<'a> {
-    #[regex(r"[ \t\n\r\f]+", logos::skip)]
+pub enum Token<'a> {
+    #[regex(r"[ \t\n\r]+", logos::skip)]
     #[error]
     Error,
 
@@ -50,7 +50,7 @@ enum Token<'a> {
     #[token(r":")]
     Colon,
     #[token(r";")]
-    SemiColon,
+    Semicolon,
 
     #[token(r"||")]
     Or,
@@ -72,6 +72,11 @@ enum Token<'a> {
     AndAssign,
     #[token(r"^=")]
     XorAssign,
+
+    #[token("::")]
+    Path,
+    #[token("..")]
+    Range,
 
     #[token(r"==")]
     EqualEqual,
@@ -102,19 +107,42 @@ enum Token<'a> {
     Loop,
     #[token(r"for")]
     For,
+    #[token("in")]
+    In,
     #[token(r"mut")]
     Mut,
+    #[token(r"import")]
+    Import,
+    #[token(r"export")]
+    Export,
+
+    #[regex(r#""(\\"|[^"])*""#, |lex| &lex.slice()[1..(lex.slice().len() - 1)])]
+    StringLiteral(&'a str),
+    #[regex(r"([0-9]+|0x[A-Fa-f0-9]+|0o[0-7]+|0b[01]+)", |lex| parse_integer(lex.slice()))]
+    IntegerLiteral(i64),
+    #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
+    FloatLiteral(f64),
+    #[token("true")]
+    TrueLiteral,
+    #[token("false")]
+    FalseLiteral,
 
     #[regex(r"//.*[\n\r]")]
     Comment,
 
-    #[regex(r#"".*""#, |lex| &lex.slice()[1..lex.slice().len() - 1])]
-    StringLiteral(&'a str),
-    #[regex(r"[0-9_]+", |lex| lex.slice().chars().filter(|c| *c != '_').collect::<String>().parse())]
-    IntegerLiteral(i64),
-    #[regex(r"[0-9_]+\.[0-9_]+", |lex| lex.slice().chars().filter(|c| *c != '_').collect::<String>().parse())]
-    FloatLiteral(f64),
-
     #[regex(r"_*[A-Za-z][A-Za-z0-9_]*", |lex| lex.slice())]
     Identifier(&'a str),
+}
+
+fn parse_integer(slice: &str) -> Option<i64> {
+    let bytes = slice.as_bytes();
+    match (slice.len() >= 2, bytes[0]) {
+        (true, b'0') => match bytes[1] {
+            b'x' => i64::from_str_radix(&slice[2..], 16).ok(),
+            b'o' => i64::from_str_radix(&slice[2..], 8).ok(),
+            b'b' => i64::from_str_radix(&slice[2..], 2).ok(),
+            _ => slice.parse().ok(),
+        },
+        _ => slice.parse().ok(),
+    }
 }

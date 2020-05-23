@@ -1,12 +1,10 @@
 [package]
-name = "possum"
+name = "cli"
 version = "0.1.0"
 authors = ["Raphaël Thériault <raphael_theriault@outlook.com>"]
 edition = "2018"
 license = "Apache-2.0"
 
-[workspace]
-members = ["cli"]
-
 [dependencies]
+possum = { path = ".." }
 logos = "0.11"
