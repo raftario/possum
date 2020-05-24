@@ -20,9 +20,9 @@ pub enum Error {
     InvalidEscape(String),
 }
 
-/// Represents the possible source tokens
+/// Represents a scalar (textual) token
 #[derive(Debug, Copy, Clone, PartialEq, Logos)]
-pub enum TokenType {
+pub enum Scalar {
     #[regex(r"[ \n\t\r]+", logos::skip)]
     #[error]
     Error,
@@ -190,13 +190,15 @@ pub enum TokenType {
     Identifier,
 }
 
+/// Represents a token
 #[derive(Debug, Clone)]
 pub enum Token<'a> {
-    Scalar(TokenType),
+    Scalar(Scalar),
     Literal(Literal),
     Identifier(&'a str),
 }
 
+/// Represents a literal token
 #[derive(Debug, Clone)]
 pub enum Literal {
     Integer(u64),
@@ -210,36 +212,36 @@ pub enum Literal {
 
 /// Parses the provided source code into an iterator of tokens
 pub fn lex<'a>(source: &'a str) -> impl Iterator<Item = (Result<Token<'a>, Error>, Span)> + 'a {
-    TokenType::lexer(source).spanned().map(move |(ty, span)| {
+    Scalar::lexer(source).spanned().map(move |(ty, span)| {
         let token =
             match ty {
-                TokenType::Error => Err(Error::InvalidToken),
+                Scalar::Error => Err(Error::InvalidToken),
 
-                TokenType::IntegerLiteral => parse_int(&source[span.start..span.end])
+                Scalar::IntegerLiteral => parse_int(&source[span.start..span.end])
                     .map(|i| Token::Literal(Literal::Integer(i))),
-                TokenType::HexIntegerLiteral => parse_hex_int(&source[span.start..span.end])
+                Scalar::HexIntegerLiteral => parse_hex_int(&source[span.start..span.end])
                     .map(|i| Token::Literal(Literal::Integer(i))),
-                TokenType::OctIntegerLiteral => parse_oct_int(&source[span.start..span.end])
+                Scalar::OctIntegerLiteral => parse_oct_int(&source[span.start..span.end])
                     .map(|i| Token::Literal(Literal::Integer(i))),
-                TokenType::BinIntegerLiteral => parse_bin_int(&source[span.start..span.end])
+                Scalar::BinIntegerLiteral => parse_bin_int(&source[span.start..span.end])
                     .map(|i| Token::Literal(Literal::Integer(i))),
 
-                TokenType::FloatLiteral => parse_float(&source[span.start..span.end])
+                Scalar::FloatLiteral => parse_float(&source[span.start..span.end])
                     .map(|f| Token::Literal(Literal::Float(f))),
 
-                TokenType::TrueLiteral => Ok(Token::Literal(Literal::Bool(true))),
-                TokenType::FalseLiteral => Ok(Token::Literal(Literal::Bool(false))),
+                Scalar::TrueLiteral => Ok(Token::Literal(Literal::Bool(true))),
+                Scalar::FalseLiteral => Ok(Token::Literal(Literal::Bool(false))),
 
-                TokenType::StringLiteral => parse_str(&source[span.start..span.end])
+                Scalar::StringLiteral => parse_str(&source[span.start..span.end])
                     .map(|s| Token::Literal(Literal::String(s))),
-                TokenType::CharLiteral => parse_char(&source[span.start..span.end])
+                Scalar::CharLiteral => parse_char(&source[span.start..span.end])
                     .map(|c| Token::Literal(Literal::Char(c))),
-                TokenType::ByteStringLiteral => parse_byte_str(&source[span.start..span.end])
+                Scalar::ByteStringLiteral => parse_byte_str(&source[span.start..span.end])
                     .map(|bs| Token::Literal(Literal::ByteString(bs))),
-                TokenType::ByteLiteral => parse_byte(&source[span.start..span.end])
+                Scalar::ByteLiteral => parse_byte(&source[span.start..span.end])
                     .map(|b| Token::Literal(Literal::Byte(b))),
 
-                TokenType::Identifier => Ok(Token::Identifier(&source[span.start..span.end])),
+                Scalar::Identifier => Ok(Token::Identifier(&source[span.start..span.end])),
 
                 _ => Ok(Token::Scalar(ty)),
             };
