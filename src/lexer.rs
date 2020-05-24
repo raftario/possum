@@ -156,6 +156,10 @@ pub enum TokenType {
     #[token("continue")]
     Continue,
 
+    #[regex(r"//.*[\n\r]")]
+    Comment,
+
+    // Literals
     #[regex(r"[0-9](_?[0-9])*")]
     IntegerLiteral,
     #[regex(r"0[Xx][A-Fa-f0-9](_?[A-Fa-f0-9])*")]
@@ -179,23 +183,66 @@ pub enum TokenType {
     #[regex(r#"b'(\\'|\\x[0-7][A-Fa-f0-9]|\\?[\x00-\x26\x28-\x7F])'"#)]
     ByteLiteral,
 
-    #[regex(r"//.*[\n\r]")]
-    Comment,
-
+    // Identifiers
     #[regex(r"_*[A-Za-z][A-Za-z0-9_]*")]
     Identifier,
 }
 
+#[derive(Debug, Clone)]
+pub enum Token<'a> {
+    Scalar(TokenType),
+    Literal(Literal),
+    Identifier(&'a str),
+}
+
+#[derive(Debug, Clone)]
+pub enum Literal {
+    Integer(u64),
+    Float(f64),
+    Bool(bool),
+    String(String),
+    Char(char),
+    ByteString(Vec<u8>),
+    Byte(u8),
+}
+
 /// Parses the provided source code into an iterator of tokens
-pub fn lexer<'a>(source: &'a str) -> impl Iterator<Item = (Result<TokenType, Error>, Span)> + 'a {
-    TokenType::lexer(source).spanned().map(|(t, s)| {
-        (
-            match t {
+pub fn lex<'a>(source: &'a str) -> impl Iterator<Item = (Result<Token<'a>, Error>, Span)> + 'a {
+    TokenType::lexer(source).spanned().map(move |(ty, span)| {
+        let token =
+            match ty {
                 TokenType::Error => Err(Error::InvalidToken),
-                _ => Ok(t),
-            },
-            s,
-        )
+
+                TokenType::IntegerLiteral => parse_int(&source[span.start..span.end])
+                    .map(|i| Token::Literal(Literal::Integer(i))),
+                TokenType::HexIntegerLiteral => parse_hex_int(&source[span.start..span.end])
+                    .map(|i| Token::Literal(Literal::Integer(i))),
+                TokenType::OctIntegerLiteral => parse_oct_int(&source[span.start..span.end])
+                    .map(|i| Token::Literal(Literal::Integer(i))),
+                TokenType::BinIntegerLiteral => parse_bin_int(&source[span.start..span.end])
+                    .map(|i| Token::Literal(Literal::Integer(i))),
+
+                TokenType::FloatLiteral => parse_float(&source[span.start..span.end])
+                    .map(|f| Token::Literal(Literal::Float(f))),
+
+                TokenType::TrueLiteral => Ok(Token::Literal(Literal::Bool(true))),
+                TokenType::FalseLiteral => Ok(Token::Literal(Literal::Bool(false))),
+
+                TokenType::StringLiteral => parse_str(&source[span.start..span.end])
+                    .map(|s| Token::Literal(Literal::String(s))),
+                TokenType::CharLiteral => parse_char(&source[span.start..span.end])
+                    .map(|c| Token::Literal(Literal::Char(c))),
+                TokenType::ByteStringLiteral => parse_byte_str(&source[span.start..span.end])
+                    .map(|bs| Token::Literal(Literal::ByteString(bs))),
+                TokenType::ByteLiteral => parse_byte(&source[span.start..span.end])
+                    .map(|b| Token::Literal(Literal::Byte(b))),
+
+                TokenType::Identifier => Ok(Token::Identifier(&source[span.start..span.end])),
+
+                _ => Ok(Token::Scalar(ty)),
+            };
+
+        (token, span)
     })
 }
 
@@ -217,6 +264,10 @@ fn parse_oct_int(slice: &str) -> Result<u64, Error> {
 /// Parses a binary integer literal to an actual integer
 fn parse_bin_int(slice: &str) -> Result<u64, Error> {
     u64::from_str_radix(&filter_underscores(&slice[2..]), 2).map_err(Into::into)
+}
+
+fn parse_float(slice: &str) -> Result<f64, Error> {
+    filter_underscores(slice).parse().map_err(Into::into)
 }
 
 /// Removes underscores from a slice
@@ -306,6 +357,7 @@ where
 
         Some('0') => Ok('\0'),
 
+        // ASCII
         Some('x') => match chars.next().map(Into::into) {
             Some(n1) if is_ascii_octdigit(n1) => match chars.next().map(Into::into) {
                 Some(n2) if n2.is_ascii_hexdigit() => {

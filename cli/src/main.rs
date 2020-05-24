@@ -43,7 +43,7 @@ fn run(source: &str) {
 
     let mut tokens = Vec::new();
     let mut errors = Vec::new();
-    for (result, span) in lexer::lexer(source) {
+    for (result, span) in lexer::lex(source) {
         match result {
             Ok(t) => tokens.push((t, span)),
             Err(e) => errors.push((e, span)),
