@@ -351,26 +351,25 @@ where
         Some('x') => {
             let n1 = match chars.next().map(Into::into) {
                 Some(n1) if is_ascii_octdigit(n1) => n1,
-                Some(n1) => return Err(Error::InvalidEscape(['\\', 'x', n1].iter().collect())),
-                None => return Err(Error::InvalidEscape(['\\', 'x'].iter().collect())),
+                Some(n1) => return Err(Error::InvalidEscape(format!("\\x{}", n1))),
+                None => return Err(Error::InvalidEscape("\\x".to_owned())),
             };
 
             let n2 = match chars.next().map(Into::into) {
                 Some(n2) if n2.is_ascii_hexdigit() => n2,
-                Some(n2) => return Err(Error::InvalidEscape(['\\', 'x', n1, n2].iter().collect())),
-                None => return Err(Error::InvalidEscape(['\\', 'x', n1].iter().collect())),
+                Some(n2) => return Err(Error::InvalidEscape(format!("\\x{}{}", n1, n2))),
+                None => return Err(Error::InvalidEscape(format!("\\x{}", n1))),
             };
 
-            u8::from_str_radix(&[n1, n2].iter().collect::<String>(), 16)
+            u8::from_str_radix(&format!("{}{}", n1, n2), 16)
                 .map(Into::into)
                 .map_err(Into::into)
         }
 
         // Unicode
         Some('u') if unicode => {
-            match chars.next().map(Into::into) {
-                Some('{') => (),
-                _ => return Err(Error::InvalidEscape(['\\', 'u'].iter().collect())),
+            if chars.next().map(Into::into) != Some('{') {
+                return Err(Error::InvalidEscape("\\u".to_owned()));
             }
 
             let mut digits = String::new();
@@ -381,33 +380,19 @@ where
             }
 
             if next.is_none() {
-                let mut escape: String = ['\\', 'u', '{'].iter().collect();
-                escape.push_str(&digits);
-
-                return Err(Error::InvalidEscape(escape));
+                return Err(Error::InvalidEscape(format!("\\u{{{}", digits)));
             }
 
             let num = match u32::from_str_radix(&digits, 16) {
                 Ok(n) => n,
-                Err(_) => {
-                    let mut escape: String = ['\\', 'u', '{'].iter().collect();
-                    escape.push_str(&digits);
-                    escape.push('}');
-
-                    return Err(Error::InvalidEscape(escape));
-                }
+                Err(_) => return Err(Error::InvalidEscape(format!("\\u{{{}}}", digits))),
             };
-            num.try_into().map_err(|_| {
-                let mut escape: String = ['\\', 'u', '{'].iter().collect();
-                escape.push_str(&digits);
-                escape.push('}');
-
-                Error::InvalidEscape(escape)
-            })
+            num.try_into()
+                .map_err(|_| Error::InvalidEscape(format!("\\u{{{}}}", digits)))
         }
 
-        Some(c) => Err(Error::InvalidEscape(['\\', c].iter().collect())),
-        None => Err(Error::InvalidEscape(['\\'].iter().collect())),
+        Some(c) => Err(Error::InvalidEscape(format!("\\{}", c))),
+        None => Err(Error::InvalidEscape("\\".to_owned())),
     }
 }
 
