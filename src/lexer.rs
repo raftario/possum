@@ -170,7 +170,7 @@ pub enum TokenType {
     OctIntegerLiteral,
     #[regex(r"0[Bb][01](_?[01])*")]
     BinIntegerLiteral,
-    #[regex(r"[0-9](_?[0-9])*\.[0-9](_?[0-9])*")]
+    #[regex(r"[0-9](_?[0-9])*\.[0-9](_?[0-9])*([Ee][+-][0-9](_?[0-9])*)?")]
     FloatLiteral,
     #[token("true")]
     TrueLiteral,
