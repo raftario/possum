@@ -1,6 +1,8 @@
-use crate::lexer::Error::InvalidEscape;
 use logos::{Logos, Span};
-use std::num::{ParseFloatError, ParseIntError};
+use std::{
+    convert::TryInto,
+    num::{ParseFloatError, ParseIntError},
+};
 use thiserror::Error;
 
 /// Represents a lexing error
@@ -176,7 +178,7 @@ pub enum TokenType {
     FalseLiteral,
     #[regex(r#""(\\"|[^"])*""#)]
     StringLiteral,
-    #[regex(r#"'(\\'|\\x[0-7][A-Fa-f0-9]|\\?[^'])'"#)]
+    #[regex(r#"'(\\'|\\x[0-7][A-Fa-f0-9]|\\u\{[A-Fa-f0-9]+\}|\\?[^'])'"#)]
     CharLiteral,
     #[regex(r#"b"(\\"|[\x00-\x21\x23-\x7F])*""#)]
     ByteStringLiteral,
@@ -246,22 +248,18 @@ pub fn lex<'a>(source: &'a str) -> impl Iterator<Item = (Result<Token<'a>, Error
     })
 }
 
-/// Parses a decimal integer literal to an actual integer
 fn parse_int(slice: &str) -> Result<u64, Error> {
     filter_underscores(slice).parse().map_err(Into::into)
 }
 
-/// Parses an hexadecimal integer literal to an actual integer
 fn parse_hex_int(slice: &str) -> Result<u64, Error> {
     u64::from_str_radix(&filter_underscores(&slice[2..]), 16).map_err(Into::into)
 }
 
-/// Parses an octal integer literal to an actual integer
 fn parse_oct_int(slice: &str) -> Result<u64, Error> {
     u64::from_str_radix(&filter_underscores(&slice[2..]), 8).map_err(Into::into)
 }
 
-/// Parses a binary integer literal to an actual integer
 fn parse_bin_int(slice: &str) -> Result<u64, Error> {
     u64::from_str_radix(&filter_underscores(&slice[2..]), 2).map_err(Into::into)
 }
@@ -270,14 +268,10 @@ fn parse_float(slice: &str) -> Result<f64, Error> {
     filter_underscores(slice).parse().map_err(Into::into)
 }
 
-/// Removes underscores from a slice
 fn filter_underscores(slice: &str) -> String {
     slice.chars().filter(|c| *c != '_').collect()
 }
 
-// TODO: Unicode escape support
-
-/// Parses a string literal to an actual string
 fn parse_str(slice: &str) -> Result<String, Error> {
     // Ignore quotes
     let slice = &slice[1..(slice.len() - 1)];
@@ -287,7 +281,7 @@ fn parse_str(slice: &str) -> Result<String, Error> {
 
     while let Some(c) = chars.next() {
         res.push(match c {
-            '\\' => unescape(&mut chars)?,
+            '\\' => unescape(&mut chars, true)?,
             _ => c,
         });
     }
@@ -295,20 +289,18 @@ fn parse_str(slice: &str) -> Result<String, Error> {
     Ok(res)
 }
 
-/// Parses a char literal to an actual char
 fn parse_char(slice: &str) -> Result<char, Error> {
     // Ignore quotes
     let slice = &slice[1..(slice.len() - 1)];
 
     let mut chars = slice.chars();
     match chars.next() {
-        Some('\\') => unescape(&mut chars),
+        Some('\\') => unescape(&mut chars, true),
         Some(c) => Ok(c),
         _ => unreachable!(),
     }
 }
 
-/// Parses a byte string literal to an actual byte string
 fn parse_byte_str(slice: &str) -> Result<Vec<u8>, Error> {
     // Ignore quotes and prefix
     let slice = slice[2..(slice.len() - 1)].as_bytes();
@@ -318,7 +310,7 @@ fn parse_byte_str(slice: &str) -> Result<Vec<u8>, Error> {
 
     while let Some(b) = bytes.next() {
         res.push(match b {
-            b'\\' => unescape(&mut bytes)? as u8,
+            b'\\' => unescape(&mut bytes, false)? as u8,
             _ => b,
         });
     }
@@ -326,7 +318,6 @@ fn parse_byte_str(slice: &str) -> Result<Vec<u8>, Error> {
     Ok(res)
 }
 
-/// Parses a byte literal to an actual byte
 fn parse_byte(slice: &str) -> Result<u8, Error> {
     // Ignore quotes and prefix
     let slice = slice[2..(slice.len() - 1)].as_bytes();
@@ -334,14 +325,13 @@ fn parse_byte(slice: &str) -> Result<u8, Error> {
     let mut bytes = slice.iter().copied();
     match bytes.next() {
         // The cast is safe since byte literals will not match unicode
-        Some(b'\\') => Ok(unescape(&mut bytes)? as u8),
+        Some(b'\\') => Ok(unescape(&mut bytes, false)? as u8),
         Some(b) => Ok(b),
         _ => unreachable!(),
     }
 }
 
-/// Converts an escape code to the character it represents
-fn unescape<Char, Chars>(chars: &mut Chars) -> Result<char, Error>
+fn unescape<Char, Chars>(chars: &mut Chars, unicode: bool) -> Result<char, Error>
 where
     Char: Into<char>,
     Chars: Iterator<Item = Char>,
@@ -358,21 +348,63 @@ where
         Some('0') => Ok('\0'),
 
         // ASCII
-        Some('x') => match chars.next().map(Into::into) {
-            Some(n1) if is_ascii_octdigit(n1) => match chars.next().map(Into::into) {
-                Some(n2) if n2.is_ascii_hexdigit() => {
-                    u8::from_str_radix(&[n1, n2].iter().collect::<String>(), 16)
-                        .map(Into::into)
-                        .map_err(Into::into)
+        Some('x') => {
+            let n1 = match chars.next().map(Into::into) {
+                Some(n1) if is_ascii_octdigit(n1) => n1,
+                Some(n1) => return Err(Error::InvalidEscape(['\\', 'x', n1].iter().collect())),
+                None => return Err(Error::InvalidEscape(['\\', 'x'].iter().collect())),
+            };
+
+            let n2 = match chars.next().map(Into::into) {
+                Some(n2) if n2.is_ascii_hexdigit() => n2,
+                Some(n2) => return Err(Error::InvalidEscape(['\\', 'x', n1, n2].iter().collect())),
+                None => return Err(Error::InvalidEscape(['\\', 'x', n1].iter().collect())),
+            };
+
+            u8::from_str_radix(&[n1, n2].iter().collect::<String>(), 16)
+                .map(Into::into)
+                .map_err(Into::into)
+        }
+
+        // Unicode
+        Some('u') if unicode => {
+            match chars.next().map(Into::into) {
+                Some('{') => (),
+                _ => return Err(Error::InvalidEscape(['\\', 'u'].iter().collect())),
+            }
+
+            let mut digits = String::new();
+            let mut next = chars.next().map(Into::into);
+            while next.is_some() && next != Some('}') {
+                digits.push(next.unwrap());
+                next = chars.next().map(Into::into);
+            }
+
+            if next.is_none() {
+                let mut escape: String = ['\\', 'u', '{'].iter().collect();
+                escape.push_str(&digits);
+
+                return Err(Error::InvalidEscape(escape));
+            }
+
+            let num = match u32::from_str_radix(&digits, 16) {
+                Ok(n) => n,
+                Err(_) => {
+                    let mut escape: String = ['\\', 'u', '{'].iter().collect();
+                    escape.push_str(&digits);
+                    escape.push('}');
+
+                    return Err(Error::InvalidEscape(escape));
                 }
+            };
+            num.try_into().map_err(|_| {
+                let mut escape: String = ['\\', 'u', '{'].iter().collect();
+                escape.push_str(&digits);
+                escape.push('}');
 
-                Some(n2) => Err(InvalidEscape(['\\', 'x', n1, n2].iter().collect())),
-                None => Err(InvalidEscape(['\\', 'x', n1].iter().collect())),
-            },
-
-            Some(n1) => Err(InvalidEscape(['\\', 'x', n1].iter().collect())),
-            None => Err(InvalidEscape(['\\', 'x'].iter().collect())),
-        },
+                Error::InvalidEscape(escape)
+            })
+        }
 
         Some(c) => Err(Error::InvalidEscape(['\\', c].iter().collect())),
         None => Err(Error::InvalidEscape(['\\'].iter().collect())),
