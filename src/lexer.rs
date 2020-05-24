@@ -162,6 +162,8 @@ pub enum Scalar {
     Comment,
 
     // Literals
+    #[token("none")]
+    NoneLiteral,
     #[regex(r"[0-9](_?[0-9])*")]
     IntegerLiteral,
     #[regex(r"0[Xx][A-Fa-f0-9](_?[A-Fa-f0-9])*")]
@@ -201,6 +203,7 @@ pub enum Token<'a> {
 /// Represents a literal token
 #[derive(Debug, Clone)]
 pub enum Literal {
+    None,
     Integer(u64),
     Float(f64),
     Bool(bool),
@@ -216,6 +219,8 @@ pub fn lex<'a>(source: &'a str) -> impl Iterator<Item = (Result<Token<'a>, Error
         let token =
             match ty {
                 Scalar::Error => Err(Error::InvalidToken),
+
+                Scalar::NoneLiteral => Ok(Token::Literal(Literal::None)),
 
                 Scalar::IntegerLiteral => parse_int(&source[span.start..span.end])
                     .map(|i| Token::Literal(Literal::Integer(i))),
