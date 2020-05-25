@@ -6,7 +6,8 @@ edition = "2018"
 license = "Apache-2.0"
 
 [workspace]
-members = ["cli"]
+members = ["frontend-cli"]
+exclude = ["frontend-wasm"]
 
 [dependencies]
 logos = "0.11"
