@@ -13,6 +13,8 @@ pub enum Expr<'a> {
     Binary(Box<Binary<'a>>),
     Unary(Box<Unary<'a>>),
     Primary(Box<Primary<'a>>),
+
+    Invalid(Option<Span>),
 }
 
 #[derive(Debug, Clone)]
@@ -60,14 +62,17 @@ macro_rules! ass {
 macro_rules! binary {
     ($name:ident, $as_name:ident, $next_name:path, $($scalar:path),+ $(,)?) => {
         ass!($as_name, $($scalar),+);
-        fn $name<'a>(tokens: &'a crate::ast::Tokens) -> Result<crate::ast::Expr<'a>, Error> {
-            let mut expr = $next_name(tokens)?;
+        fn $name<'a, 'b>(
+            tokens: &'a crate::ast::Tokens,
+            errors: &'b mut Vec<crate::ast::Error>,
+        ) -> crate::ast::Expr<'a> {
+            let mut expr = $next_name(tokens, errors);
             while let Some(Some((t, s))) = tokens.peek().map(crate::lexer::Token::$as_name) {
                 tokens.next();
-                let rhs = $next_name(tokens)?;
+                let rhs = $next_name(tokens, errors);
                 expr = Expr::Binary(Box::new(Binary { lhs: expr, op: (t, s), rhs }));
             }
-            Ok(expr)
+            expr
         }
     }
 }
@@ -106,28 +111,30 @@ binary!(
 
 ass!(as_unary, Scalar::Bang, Scalar::Plus, Scalar::Minus);
 
-pub fn parse<'a>(tokens: &'a Tokens<'a>) -> Result<Expr<'a>, Error> {
-    equality(tokens)
+pub fn parse<'a>(tokens: &'a Tokens<'a>) -> (Expr<'a>, Vec<Error>) {
+    let mut errors = Vec::new();
+    let expr = equality(tokens, &mut errors);
+    (expr, errors)
 }
 
-fn unary<'a>(tokens: &'a Tokens<'a>) -> Result<Expr<'a>, Error> {
+fn unary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<Error>) -> Expr<'a> {
     if let Some(Some((t, s))) = tokens.peek().map(Token::as_unary) {
         tokens.next();
-        let rhs = unary(tokens)?;
-        return Ok(Expr::Unary(Box::new(Unary { op: (t, s), rhs })));
+        let rhs = unary(tokens, errors);
+        return Expr::Unary(Box::new(Unary { op: (t, s), rhs }));
     }
 
-    primary(tokens)
+    primary(tokens, errors)
 }
 
-fn primary<'a>(tokens: &'a Tokens<'a>) -> Result<Expr<'a>, Error> {
+fn primary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<Error>) -> Expr<'a> {
     match tokens.peek() {
         Some(Token {
             ty: TokenType::Literal(l),
             span,
         }) => {
             tokens.next();
-            Ok(Expr::Primary(Box::new(Primary::Literal(l, *span))))
+            Expr::Primary(Box::new(Primary::Literal(l, *span)))
         }
 
         Some(Token {
@@ -135,10 +142,14 @@ fn primary<'a>(tokens: &'a Tokens<'a>) -> Result<Expr<'a>, Error> {
             span,
         }) => {
             tokens.next();
-            Ok(Expr::Primary(Box::new(Primary::Identifier(i, *span))))
+            Expr::Primary(Box::new(Primary::Identifier(i, *span)))
         }
 
-        _ => Err(Error::Unimplemented),
+        _ => {
+            errors.push(Error::Unimplemented);
+            let span = tokens.next().map(|t| t.span);
+            Expr::Invalid(span)
+        }
     }
 }
 

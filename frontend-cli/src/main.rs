@@ -80,13 +80,28 @@ fn run(source: &str) {
     for token in &tokens {
         println!("{:?}", token);
     }
+
     println!();
 
     let tokens = Tokens::new(&tokens);
 
     let start = Instant::now();
-    let ast = ast::parse(&tokens);
+    let (ast, errors) = ast::parse(&tokens);
     let elapsed = start.elapsed();
-    println!("Parsed AST in {} us", elapsed.as_micros(),);
+
+    println!(
+        "Parsed AST in {} us with {} errors",
+        elapsed.as_micros(),
+        errors.len(),
+    );
+    println!();
+
+    if !errors.is_empty() {
+        for error in errors {
+            println!("{:?}", error);
+        }
+        println!();
+    }
+
     println!("{:#?}", ast);
 }
