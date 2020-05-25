@@ -10,7 +10,10 @@ pub enum Error {
 
 /// Spanned scalar
 #[derive(Debug, Copy, Clone)]
-pub struct SpSc(pub Scalar, pub Span);
+pub struct SpSc {
+    pub sc: Scalar,
+    pub sp: Span,
+}
 
 #[derive(Debug, Clone)]
 pub struct Expr<'a> {
@@ -59,7 +62,10 @@ macro_rules! ass {
                         Self {
                             ty: crate::lexer::TokenType::Scalar($scalar),
                             span: Span(s1, s2),
-                        } => Some(SpSc($scalar, crate::lexer::Span(*s1, *s2))),
+                        } => Some(SpSc {
+                            sc: $scalar,
+                            sp: crate::lexer::Span(*s1, *s2)
+                        }),
                     )+
                     _ => None,
                 }
@@ -76,14 +82,14 @@ macro_rules! binary {
             errors: &'b mut Vec<(crate::ast::Error, crate::lexer::Span)>,
         ) -> crate::ast::Expr<'a> {
             let mut expr = $next_name(tokens, errors);
-            while let Some(Some(SpSc(t, s))) = tokens.peek().map(crate::lexer::Token::$as_name) {
+            while let Some(Some(op)) = tokens.peek().map(crate::lexer::Token::$as_name) {
                 tokens.next();
                 let rhs = $next_name(tokens, errors);
                 expr = Expr {
                     span: Span(expr.span.0, rhs.span.1),
                     ty: ExprType::Binary(Box::new(Binary {
                         lhs: expr,
-                        op: SpSc(t, s),
+                        op: op,
                         rhs,
                     })),
                 };
@@ -135,15 +141,12 @@ pub fn parse<'a>(tokens: &'a Tokens<'a>) -> (Expr<'a>, Vec<(Error, Span)>) {
 }
 
 fn unary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<(Error, Span)>) -> Expr<'a> {
-    if let Some(Some(SpSc(t, s))) = tokens.peek().map(Token::as_unary) {
+    if let Some(Some(op)) = tokens.peek().map(Token::as_unary) {
         tokens.next();
         let rhs = unary(tokens, errors);
         return Expr {
-            span: Span(s.0, rhs.span.1),
-            ty: ExprType::Unary(Box::new(Unary {
-                op: SpSc(t, s),
-                rhs,
-            })),
+            span: Span(op.sp.0, rhs.span.1),
+            ty: ExprType::Unary(Box::new(Unary { op, rhs })),
         };
     }
 
