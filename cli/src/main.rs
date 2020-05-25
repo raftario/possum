@@ -1,4 +1,7 @@
-use possum::lexer;
+use possum::{
+    ast::{self, Tokens},
+    lexer,
+};
 use std::{
     env, fs,
     io::{self, BufRead, Write},
@@ -39,18 +42,20 @@ fn run_prompt() {
 }
 
 fn run(source: &str) {
-    let start = Instant::now();
-
     let mut tokens = Vec::new();
     let mut errors = Vec::new();
-    for (result, span) in lexer::lex(source) {
+
+    let start = Instant::now();
+
+    for result in lexer::lex(source) {
         match result {
-            Ok(t) => tokens.push((t, span)),
-            Err(e) => errors.push((e, span)),
+            Ok(t) => tokens.push(t),
+            Err(e) => errors.push(e),
         }
     }
 
     let elapsed = start.elapsed();
+
     println!(
         "Parsed {} tokens in {} us with {} errors",
         tokens.len(),
@@ -59,22 +64,29 @@ fn run(source: &str) {
     );
     println!();
 
-    for (error, span) in errors {
-        println!(
-            "[{}..{}] {:?} - {:?}",
-            span.start,
-            span.end,
-            &source[span.start..span.end],
-            error,
-        );
+    if !errors.is_empty() {
+        for (error, span) in errors {
+            println!(
+                "[{}..{}] {:?} - {:?}",
+                span.0,
+                span.1,
+                &source[span.0..span.1],
+                error,
+            );
+        }
+        println!();
     }
-    for (token, span) in tokens {
-        println!(
-            "[{}..{}] {:?} - {:?}",
-            span.start,
-            span.end,
-            &source[span.start..span.end],
-            token,
-        );
+
+    for token in &tokens {
+        println!("{:?}", token);
     }
+    println!();
+
+    let tokens = Tokens::new(&tokens);
+
+    let start = Instant::now();
+    let ast = ast::parse(&tokens);
+    let elapsed = start.elapsed();
+    println!("Parsed AST in {} us", elapsed.as_micros(),);
+    println!("{:#?}", ast);
 }
