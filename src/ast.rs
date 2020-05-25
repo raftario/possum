@@ -8,49 +8,58 @@ pub enum Error {
     Unimplemented,
 }
 
+/// Spanned scalar
+#[derive(Debug, Copy, Clone)]
+pub struct SpSc(pub Scalar, pub Span);
+
 #[derive(Debug, Clone)]
-pub enum Expr<'a> {
+pub struct Expr<'a> {
+    ty: ExprType<'a>,
+    span: Span,
+}
+#[derive(Debug, Clone)]
+pub enum ExprType<'a> {
     Binary(Box<Binary<'a>>),
     Unary(Box<Unary<'a>>),
     Primary(Box<Primary<'a>>),
 
-    Invalid(Option<Span>),
+    Invalid,
 }
 
 #[derive(Debug, Clone)]
 pub struct Binary<'a> {
     lhs: Expr<'a>,
-    op: (Scalar, Span),
+    op: SpSc,
     rhs: Expr<'a>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Unary<'a> {
-    op: (Scalar, Span),
+    op: SpSc,
     rhs: Expr<'a>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Primary<'a> {
-    Literal(&'a Literal, Span),
-    Identifier(&'a str, Span),
+    Literal(&'a Literal),
+    Identifier(&'a str),
     Block {
-        lhs: (Scalar, Span),
+        lhs: SpSc,
         expr: Expr<'a>,
-        rhs: (Scalar, Span),
+        rhs: SpSc,
     },
 }
 
 macro_rules! ass {
     ($name:ident, $($scalar:path),+ $(,)?) => {
         impl crate::lexer::Token<'_> {
-            fn $name(&self) -> Option<(crate::lexer::Scalar, crate::lexer::Span)> {
+            fn $name(&self) -> Option<SpSc> {
                 match self {
                     $(
                         Self {
                             ty: crate::lexer::TokenType::Scalar($scalar),
                             span: Span(s1, s2),
-                        } => Some(($scalar, crate::lexer::Span(*s1, *s2))),
+                        } => Some(SpSc($scalar, crate::lexer::Span(*s1, *s2))),
                     )+
                     _ => None,
                 }
@@ -64,13 +73,20 @@ macro_rules! binary {
         ass!($as_name, $($scalar),+);
         fn $name<'a, 'b>(
             tokens: &'a crate::ast::Tokens,
-            errors: &'b mut Vec<crate::ast::Error>,
+            errors: &'b mut Vec<(crate::ast::Error, crate::lexer::Span)>,
         ) -> crate::ast::Expr<'a> {
             let mut expr = $next_name(tokens, errors);
-            while let Some(Some((t, s))) = tokens.peek().map(crate::lexer::Token::$as_name) {
+            while let Some(Some(SpSc(t, s))) = tokens.peek().map(crate::lexer::Token::$as_name) {
                 tokens.next();
                 let rhs = $next_name(tokens, errors);
-                expr = Expr::Binary(Box::new(Binary { lhs: expr, op: (t, s), rhs }));
+                expr = Expr {
+                    span: Span(expr.span.0, rhs.span.1),
+                    ty: ExprType::Binary(Box::new(Binary {
+                        lhs: expr,
+                        op: SpSc(t, s),
+                        rhs,
+                    })),
+                };
             }
             expr
         }
@@ -111,30 +127,40 @@ binary!(
 
 ass!(as_unary, Scalar::Bang, Scalar::Plus, Scalar::Minus);
 
-pub fn parse<'a>(tokens: &'a Tokens<'a>) -> (Expr<'a>, Vec<Error>) {
+/// Parses a stream of tokens into an AST
+pub fn parse<'a>(tokens: &'a Tokens<'a>) -> (Expr<'a>, Vec<(Error, Span)>) {
     let mut errors = Vec::new();
     let expr = equality(tokens, &mut errors);
     (expr, errors)
 }
 
-fn unary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<Error>) -> Expr<'a> {
-    if let Some(Some((t, s))) = tokens.peek().map(Token::as_unary) {
+fn unary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<(Error, Span)>) -> Expr<'a> {
+    if let Some(Some(SpSc(t, s))) = tokens.peek().map(Token::as_unary) {
         tokens.next();
         let rhs = unary(tokens, errors);
-        return Expr::Unary(Box::new(Unary { op: (t, s), rhs }));
+        return Expr {
+            span: Span(s.0, rhs.span.1),
+            ty: ExprType::Unary(Box::new(Unary {
+                op: SpSc(t, s),
+                rhs,
+            })),
+        };
     }
 
     primary(tokens, errors)
 }
 
-fn primary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<Error>) -> Expr<'a> {
+fn primary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<(Error, Span)>) -> Expr<'a> {
     match tokens.peek() {
         Some(Token {
             ty: TokenType::Literal(l),
             span,
         }) => {
             tokens.next();
-            Expr::Primary(Box::new(Primary::Literal(l, *span)))
+            Expr {
+                ty: ExprType::Primary(Box::new(Primary::Literal(l))),
+                span: *span,
+            }
         }
 
         Some(Token {
@@ -142,19 +168,26 @@ fn primary<'a, 'b>(tokens: &'a Tokens<'a>, errors: &'b mut Vec<Error>) -> Expr<'
             span,
         }) => {
             tokens.next();
-            Expr::Primary(Box::new(Primary::Identifier(i, *span)))
+            Expr {
+                ty: ExprType::Primary(Box::new(Primary::Identifier(i))),
+                span: *span,
+            }
         }
 
         _ => {
-            errors.push(Error::Unimplemented);
-            let span = tokens.next().map(|t| t.span);
-            Expr::Invalid(span)
+            let span = tokens.next().map(|t| t.span).unwrap_or(Span(0, 0));
+            errors.push((Error::Unimplemented, span));
+            Expr {
+                ty: ExprType::Invalid,
+                span,
+            }
         }
     }
 }
 
 pub struct Tokens<'a> {
     slice: &'a [Token<'a>],
+    // Using an atomic makes it possible to pass around the struct as an immutable reference
     cursor: AtomicUsize,
 }
 

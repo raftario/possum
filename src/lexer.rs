@@ -5,7 +5,6 @@ use std::{
 };
 use thiserror::Error;
 
-/// Represents a lexing error
 #[derive(Debug, Clone, Error)]
 pub enum Error {
     #[error("invalid token")]
@@ -20,7 +19,6 @@ pub enum Error {
     InvalidEscape(String),
 }
 
-/// Represents a scalar (textual) token
 #[derive(Debug, Copy, Clone, PartialEq, Logos)]
 pub enum Scalar {
     #[regex(r"[ \n\t\r]+", logos::skip)]
@@ -192,11 +190,9 @@ pub enum Scalar {
     Identifier,
 }
 
-/// Represents a source code span
 #[derive(Debug, Copy, Clone)]
 pub struct Span(pub usize, pub usize);
 
-/// Represents a token
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
     pub ty: TokenType<'a>,
@@ -209,7 +205,6 @@ pub enum TokenType<'a> {
     Identifier(&'a str),
 }
 
-/// Represents a literal token
 #[derive(Debug, Clone)]
 pub enum Literal {
     None,

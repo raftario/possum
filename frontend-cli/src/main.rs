@@ -97,8 +97,14 @@ fn run(source: &str) {
     println!();
 
     if !errors.is_empty() {
-        for error in errors {
-            println!("{:?}", error);
+        for (error, span) in errors {
+            println!(
+                "[{}..{}] {:?} - {:?}",
+                span.0,
+                span.1,
+                &source[span.0..span.1],
+                error,
+            );
         }
         println!();
     }
