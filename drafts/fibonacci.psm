@@ -1,9 +1,8 @@
-export fn fibonacci(n: i64): i64 {
-    if n == 0 {
-        1
-    } else if n == 1 {
-        1
-    } else {
-        fibonacci(n - 2) + fibonacci(n - 1)
+use math::u64::{add, sub};
+
+export const fn fibonacci(n: u64) -> u64 {
+    match n {
+        0 | 1 => 1,
+        _ => add(n.sub(2).fibonacci(), n.sub(1).fibonacci())
     }
 }
